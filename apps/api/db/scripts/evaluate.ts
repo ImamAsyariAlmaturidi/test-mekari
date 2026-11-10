@@ -1,6 +1,8 @@
 import { access, readFile, writeFile } from "node:fs/promises";
 import { embed } from "../../src/services/retrieval.js";
 import { answerSupport } from "../../src/services/support.js";
+import { env } from "../../src/config.js";
+import type { Backend } from "../../src/services/router.js";
 
 type Case = { instruction: string; response: string; intent: string };
 type CaseResult = {
@@ -18,17 +20,24 @@ const source = await access(realEvaluation).then(() => realEvaluation).catch(() 
 const cases = JSON.parse(await readFile(source, "utf8")) as Case[];
 const cosine = (a: number[], b: number[]) => a.reduce((sum, value, i) => sum + value * b[i], 0) / Math.sqrt(a.reduce((sum, value) => sum + value * value, 0) * b.reduce((sum, value) => sum + value * value, 0));
 
-async function evaluate(mode: "direct" | "rewrite") {
+const modelConfigs = [
+  { mode: "model_a" as const, backend: "openrouter" as const, model: env.OPENROUTER_MODEL },
+  { mode: "model_b" as const, backend: "openrouter_fallback" as const, model: env.OPENROUTER_FALLBACK_MODEL }
+];
+if (modelConfigs.some(({ model }) => !model)) throw new Error("Set OPENROUTER_MODEL and OPENROUTER_FALLBACK_MODEL to compare two OpenRouter models");
+
+async function evaluate(mode: "model_a" | "model_b", backend: Backend, model: string) {
   const results = [];
   const caseResults: CaseResult[] = [];
-  console.log(JSON.stringify({ type: "progress", mode, completed: 0, total: cases.length }));
+  console.log(JSON.stringify({ type: "progress", mode, model, completed: 0, total: cases.length }));
   for (const item of cases) {
     const start = performance.now();
-    const answer = await answerSupport({ message: item.instruction, conversationId: "00000000-0000-4000-8000-000000000000", configuration: "standard", routingStrategy: "balanced" }, [], undefined, undefined, { rewriteQuery: mode === "rewrite" });
+    const answer = await answerSupport({ message: item.instruction, conversationId: "00000000-0000-4000-8000-000000000000", configuration: "standard", routingStrategy: "balanced" }, [], undefined, undefined, { routeBackend: backend });
     let quality: number | null = null;
     try { quality = cosine(await embed(answer.output.answer), await embed(item.response)); } catch { /* report quality as unavailable instead of substituting intent accuracy */ }
     const caseResult: CaseResult = {
       index: caseResults.length + 1,
+      model,
       question: item.instruction,
       expectedIntent: item.intent,
       predictedIntent: answer.output.intent,
@@ -50,7 +59,7 @@ async function evaluate(mode: "direct" | "rewrite") {
     };
     caseResults.push(caseResult);
     results.push({ intentCorrect: caseResult.intentCorrect, retrievalIntentMatch: caseResult.retrievalIntentMatch, refused: caseResult.refused, quality, latencyMs: caseResult.latencyMs, costUsd: caseResult.costUsd });
-    console.log(JSON.stringify({ type: "progress", mode, completed: results.length, total: cases.length }));
+    console.log(JSON.stringify({ type: "progress", mode, model, completed: results.length, total: cases.length }));
   }
   const qualityScores = results.flatMap((result) => result.quality === null ? [] : [result.quality]);
   return {
@@ -68,6 +77,7 @@ async function evaluate(mode: "direct" | "rewrite") {
   };
 }
 
-const output = [await evaluate("direct"), await evaluate("rewrite")];
+const output = [];
+for (const config of modelConfigs) output.push(await evaluate(config.mode, config.backend, config.model!));
 await writeFile(new URL(`${rootPrefix}evaluation-results.json`, import.meta.url), JSON.stringify({ source: source.pathname.split("/").pop(), generatedAt: new Date().toISOString(), cases: cases.length, results: output }, null, 2));
 console.table(output);
