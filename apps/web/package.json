@@ -1,0 +1,29 @@
+{
+  "name": "@router/web",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "test": "node --import tsx --test test/*.test.ts",
+    "start": "next start"
+  },
+  "dependencies": {
+    "@assistant-ui/react": "^0.15.34",
+    "@tanstack/react-table": "^9.3.1",
+    "lucide-react": "^1.71.0",
+    "next": "^15.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "recharts": "^3.10.1",
+    "sonner": "^2.0.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.5.3",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.6.0"
+  }
+}

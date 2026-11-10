@@ -1,0 +1,12 @@
+[
+  {"instruction":"I forgot my password and cannot log in.","response":"Use the Forgot Password link on the sign-in page, then follow the reset email.","intent":"password_reset"},
+  {"instruction":"How can I change the email on my account?","response":"Open Account Settings, choose Email, enter the new address, and verify it from the email we send.","intent":"change_email"},
+  {"instruction":"My card was charged twice.","response":"Please share the transaction dates and last four card digits so we can investigate the duplicate charge.","intent":"card_payment_fee_charged"},
+  {"instruction":"Where is my refund?","response":"Refunds are returned to the original payment method. Processing normally takes 5 to 10 business days.","intent":"refund_not_showing_up"},
+  {"instruction":"How do I cancel my subscription?","response":"Go to Billing Settings, select your plan, and choose Cancel subscription. Access continues until the current billing period ends.","intent":"cancel_order"},
+  {"instruction":"Can I update my shipping address?","response":"You can update the shipping address in Orders before the order is dispatched.","intent":"change_shipping_address"},
+  {"instruction":"My order has not arrived.","response":"Check the tracking link in your order email. If the delivery date has passed, contact support with your order number.","intent":"delivery_period"},
+  {"instruction":"The product I received is damaged.","response":"Send photos of the damaged item and your order number. We will arrange a replacement or refund.","intent":"damaged_product"},
+  {"instruction":"I need an invoice for my purchase.","response":"Download your invoice from Order History by opening the order and selecting Download invoice.","intent":"invoice"},
+  {"instruction":"Which payment methods do you accept?","response":"We accept major credit and debit cards and the payment methods shown during checkout.","intent":"payment_method"}
+]

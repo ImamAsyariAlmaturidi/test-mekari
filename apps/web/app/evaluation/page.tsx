@@ -1,0 +1,80 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
+import { Icon } from "../../components/Icons";
+import { getEvaluation, startEvaluation, type EvaluationReport, type EvaluationResult } from "../../lib/api";
+import { useTenantKey } from "../../lib/tenant";
+
+const pct = (value: number | null) => value === null ? "Unavailable" : `${(value * 100).toFixed(1)}%`;
+const signed = (value: number) => `${value > 0 ? "+" : ""}${value.toFixed(1)} pp`;
+
+export default function EvaluationPage() {
+  const { apiKey } = useTenantKey();
+  const [report, setReport] = useState<EvaluationReport | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const load = useCallback(async () => {
+    setLoading(true); setError(null);
+    try { setReport(await getEvaluation()); }
+    catch (caught) { setError(caught instanceof Error ? caught.message : "Could not load evaluation results"); }
+    finally { setLoading(false); }
+  }, []);
+  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    if (report?.job?.status !== "running") return;
+    const timer = window.setInterval(() => { void load(); }, 2000);
+    return () => window.clearInterval(timer);
+  }, [report?.job?.status, load]);
+
+  async function runEvaluation() {
+    if (!apiKey || starting || report?.job?.status === "running") return;
+    setStarting(true); setError(null);
+    try {
+      const { job } = await startEvaluation(apiKey);
+      setReport((current) => ({ ...(current ?? { available: false }), job }));
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Could not start evaluation"); void load(); }
+    finally { setStarting(false); }
+  }
+
+  const direct = report?.results?.find((item) => item.mode === "direct");
+  const rewrite = report?.results?.find((item) => item.mode === "rewrite");
+  const rows: { label: string; key: keyof EvaluationResult; format: (result: EvaluationResult) => string; delta?: (a: EvaluationResult, b: EvaluationResult) => string }[] = [
+    { label: "Intent accuracy", key: "intentAccuracy", format: (result) => pct(result.intentAccuracy), delta: (a, b) => signed((b.intentAccuracy - a.intentAccuracy) * 100) },
+    { label: "Retrieval intent match", key: "retrievalIntentMatchRate", format: (result) => pct(result.retrievalIntentMatchRate), delta: (a, b) => signed((b.retrievalIntentMatchRate - a.retrievalIntentMatchRate) * 100) },
+    { label: "Refusal rate", key: "refusalRate", format: (result) => pct(result.refusalRate), delta: (a, b) => signed((b.refusalRate - a.refusalRate) * 100) },
+    { label: "Answer quality · embedding cosine", key: "answerQuality", format: (result) => result.answerQuality?.toFixed(3) ?? "Unavailable", delta: (a, b) => a.answerQuality === null || b.answerQuality === null ? "Unavailable" : signed((b.answerQuality - a.answerQuality) * 100) },
+    { label: "Average latency", key: "averageLatencyMs", format: (result) => `${Math.round(result.averageLatencyMs).toLocaleString()} ms` },
+    { label: "Total estimated cost", key: "totalCostUsd", format: (result) => `$${result.totalCostUsd.toFixed(5)}` }
+  ];
+
+  return <div className="page-stack">
+    <section className="page-intro"><div><p className="section-kicker">Quality measurement</p><h1 className="page-title">Evaluation</h1><p>Compare direct Bitext retrieval against query rewriting.</p></div><div className="evaluation-actions"><Button onClick={load} disabled={loading}><Icon name="refresh" />Refresh</Button><Button onClick={runEvaluation} disabled={!apiKey || starting || report?.job?.status === "running"}>{report?.job?.status === "running" ? "Evaluation running…" : starting ? "Starting…" : "Run evaluation"}</Button></div></section>
+    {error ? <div className="error-banner" role="alert">{error}</div> : null}
+    {!apiKey ? <div className="error-banner" role="status">Select a tenant with a valid API key to run an evaluation.</div> : null}
+    {report?.job ? <Card className={`evaluation-job ${report.job.status}`}><div><b>{report.job.status === "running" ? `Running ${report.job.mode} retrieval` : report.job.status === "completed" ? "Evaluation complete" : "Evaluation failed"}</b><span>{report.job.status === "running" ? `${report.job.completedCases} / ${report.job.totalCases} cases in ${report.job.mode} mode · uses provider API credits` : report.job.finishedAt ? new Date(report.job.finishedAt).toLocaleString() : ""}</span></div>{report.job.status === "running" ? <progress max={report.job.totalCases} value={report.job.completedCases} aria-label="Evaluation case progress" /> : null}</Card> : null}
+    {loading && !report ? <Card className="evaluation-empty">Loading evaluation results…</Card> : null}
+    {report && !report.available ? <Card className="evaluation-empty"><h2>No evaluation results yet</h2><p>Run the held-out Bitext evaluation to populate this page with measured results.</p><code>npm run evaluate</code></Card> : null}
+    {direct && rewrite ? <>
+      <section className="metric-grid evaluation-metrics">
+        <Metric label="Held-out cases" value={String(report?.cases ?? direct.cases)} />
+        <Metric label="Intents covered" value={String(direct.intents)} />
+        <Metric label="Direct retrieval" value={pct(direct.intentAccuracy)} />
+        <Metric label="Rewrite retrieval" value={pct(rewrite.intentAccuracy)} />
+      </section>
+      <Card className="evaluation-table-card"><div className="panel-heading"><div><p className="section-kicker">A/B comparison</p><h2>Direct query vs rewritten query</h2></div><span className="table-note">{direct.cases} cases per configuration</span></div>
+        <div className="table-wrap"><table className="evaluation-table"><thead><tr><th>Metric</th><th>Direct</th><th>Rewrite</th><th>Change</th></tr></thead><tbody>{rows.map((row) => <tr key={row.label}><th scope="row">{row.label}</th><td>{row.format(direct)}</td><td>{row.format(rewrite)}</td><td>{row.delta ? row.delta(direct, rewrite) : "—"}</td></tr>)}</tbody></table></div>
+      </Card>
+      <Card className="evaluation-method"><div className="panel-heading"><div><p className="section-kicker">Method</p><h2>How to read these results</h2></div></div><ul>
+        <li><b>Direct</b> retrieves using the original held-out question. <b>Rewrite</b> retrieves using both the original question and the small model’s English rewrite.</li>
+        <li>Intent accuracy compares the model’s detected intent with the Bitext label. Retrieval intent match checks whether any retrieved entry has that label.</li>
+        <li>Answer quality is embedding cosine similarity against the Bitext reference response; it is an automated proxy, not a human quality score.</li>
+        <li>Latency and estimated cost include rewriting, evidence assessment, and answer generation when used. Refused cases may skip answer generation.</li>
+      </ul><p className="metric-footnote">Source: {report?.source ?? "held-out evaluation dataset"}{report?.generatedAt ? ` · Generated ${new Date(report.generatedAt).toLocaleString()}` : ""}. {rewrite.answerQualityMethod}</p></Card>
+    </> : null}
+  </div>;
+}
+
+function Metric({ label, value }: { label: string; value: string }) { return <article className="metric-card"><span>{label}</span><strong>{value}</strong></article>; }

@@ -1,0 +1,41 @@
+import { access, readFile, writeFile } from "node:fs/promises";
+import { embed } from "../../src/services/retrieval.js";
+import { answerSupport } from "../../src/services/support.js";
+
+type Case = { instruction: string; response: string; intent: string };
+const rootPrefix = import.meta.url.includes("/dist/") ? "../../../../../" : "../../../../";
+const realEvaluation = new URL(`${rootPrefix}data/eval.json`, import.meta.url);
+const fallbackEvaluation = new URL(`${rootPrefix}data/eval.sample.json`, import.meta.url);
+const source = await access(realEvaluation).then(() => realEvaluation).catch(() => fallbackEvaluation);
+const cases = JSON.parse(await readFile(source, "utf8")) as Case[];
+const cosine = (a: number[], b: number[]) => a.reduce((sum, value, i) => sum + value * b[i], 0) / Math.sqrt(a.reduce((sum, value) => sum + value * value, 0) * b.reduce((sum, value) => sum + value * value, 0));
+
+async function evaluate(mode: "direct" | "rewrite") {
+  const results = [];
+  console.log(JSON.stringify({ type: "progress", mode, completed: 0, total: cases.length }));
+  for (const item of cases) {
+    const start = performance.now();
+    const answer = await answerSupport({ message: item.instruction, conversationId: "00000000-0000-4000-8000-000000000000", configuration: "standard", routingStrategy: "balanced" }, [], undefined, undefined, { rewriteQuery: mode === "rewrite" });
+    let quality: number | null = null;
+    try { quality = cosine(await embed(answer.output.answer), await embed(item.response)); } catch { /* report quality as unavailable instead of substituting intent accuracy */ }
+    results.push({ intentCorrect: answer.output.intent === item.intent, retrievalIntentMatch: answer.entries.some((entry) => entry.intent === item.intent), refused: answer.refusalReason !== null, quality, latencyMs: Math.round(performance.now() - start), costUsd: answer.costUsd });
+    console.log(JSON.stringify({ type: "progress", mode, completed: results.length, total: cases.length }));
+  }
+  const qualityScores = results.flatMap((result) => result.quality === null ? [] : [result.quality]);
+  return {
+    mode,
+    cases: results.length,
+    intents: new Set(cases.map((item) => item.intent)).size,
+    intentAccuracy: results.filter((result) => result.intentCorrect).length / results.length,
+    retrievalIntentMatchRate: results.filter((result) => result.retrievalIntentMatch).length / results.length,
+    refusalRate: results.filter((result) => result.refused).length / results.length,
+    answerQuality: qualityScores.length === results.length ? qualityScores.reduce((sum, score) => sum + score, 0) / results.length : null,
+    answerQualityMethod: "cosine similarity of OpenAI embeddings; null if embeddings are unavailable",
+    averageLatencyMs: results.reduce((sum, result) => sum + result.latencyMs, 0) / results.length,
+    totalCostUsd: results.reduce((sum, result) => sum + result.costUsd, 0)
+  };
+}
+
+const output = [await evaluate("direct"), await evaluate("rewrite")];
+await writeFile(new URL(`${rootPrefix}evaluation-results.json`, import.meta.url), JSON.stringify({ source: source.pathname.split("/").pop(), generatedAt: new Date().toISOString(), cases: cases.length, results: output }, null, 2));
+console.table(output);

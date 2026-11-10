@@ -1,0 +1,15 @@
+{
+  "name": "mini-inference-router",
+  "private": true,
+  "workspaces": ["apps/*"],
+  "scripts": {
+    "dev:api": "npm run dev --workspace=@router/api",
+    "dev:web": "npm run dev --workspace=@router/web",
+    "build": "npm run build --workspaces",
+    "test": "npm run test --workspace=@router/api",
+    "db:migrate": "npm run db:migrate --workspace=@router/api",
+    "db:seed": "npm run db:seed --workspace=@router/api",
+    "ingest": "npm run ingest --workspace=@router/api --",
+    "evaluate": "npm run evaluate --workspace=@router/api"
+  }
+}

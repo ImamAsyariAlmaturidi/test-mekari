@@ -1,0 +1,8 @@
+node_modules/
+.next/
+dist/
+.env
+data/bitext.json
+data/bitext_source.csv
+data/Bitext_Sample_Customer_Support_Training_Dataset_27K_responses-v11.csv
+data/raw/bitext.csv

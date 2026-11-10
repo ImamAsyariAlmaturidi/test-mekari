@@ -1,0 +1,30 @@
+{
+  "name": "@router/api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "nodemon --watch src --ext ts --exec tsx src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/src/server.js",
+    "test": "npm run build && DATABASE_URL=postgres://test:test@localhost:5432/test API_KEY_HASH_SECRET=1234567890123456 node --test dist/test/*.test.js",
+    "db:migrate": "tsx db/migrate.ts",
+    "db:seed": "tsx db/seed.ts",
+    "evaluate": "tsx db/scripts/evaluate.ts",
+    "ingest": "tsx db/scripts/ingest.ts"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.0.0",
+    "dotenv": "^16.4.0",
+    "fastify": "^5.0.0",
+    "openai": "^4.0.0",
+    "pg": "^8.12.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/pg": "^8.11.0",
+    "nodemon": "^3.1.10",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}
