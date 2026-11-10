@@ -38,7 +38,7 @@ const estimatedRates = {
   openrouter_fallback: env.OPENROUTER_FALLBACK_INPUT_COST_PER_MILLION + env.OPENROUTER_FALLBACK_OUTPUT_COST_PER_MILLION,
   openai: env.MODEL_INPUT_COST_PER_MILLION + env.MODEL_OUTPUT_COST_PER_MILLION
 };
-const balancedOrder = ["openrouter", "openrouter_fallback", "openai"] as const;
+const balancedOrder = ["openrouter_fallback", "openrouter", "openai"] as const;
 const costOrder = ["openrouter", "openrouter_fallback", "openai"] as const;
 type RealBackend = (typeof balancedOrder)[number];
 type SelectionOptions = { configured: Record<RealBackend, boolean>; estimatedRates: Record<RealBackend, number> };
