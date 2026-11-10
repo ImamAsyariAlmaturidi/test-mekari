@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
 import { Icon } from "../../components/Icons";
-import { getEvaluation, startEvaluation, type EvaluationReport, type EvaluationResult } from "../../lib/api";
+import { getEvaluation, startEvaluation, type EvaluationCaseResult, type EvaluationReport, type EvaluationResult } from "../../lib/api";
 import { useTenantKey } from "../../lib/tenant";
 
 const pct = (value: number | null) => value === null ? "Unavailable" : `${(value * 100).toFixed(1)}%`;
@@ -16,6 +16,8 @@ export default function EvaluationPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [starting, setStarting] = useState(false);
+  const [caseMode, setCaseMode] = useState<"direct" | "rewrite">("direct");
+  const [openCase, setOpenCase] = useState<number | null>(null);
   const load = useCallback(async () => {
     setLoading(true); setError(null);
     try { setReport(await getEvaluation()); }
@@ -41,6 +43,7 @@ export default function EvaluationPage() {
 
   const direct = report?.results?.find((item) => item.mode === "direct");
   const rewrite = report?.results?.find((item) => item.mode === "rewrite");
+  const caseResults = report?.results?.find((item) => item.mode === caseMode)?.caseResults ?? [];
   const rows: { label: string; key: keyof EvaluationResult; format: (result: EvaluationResult) => string; delta?: (a: EvaluationResult, b: EvaluationResult) => string }[] = [
     { label: "Intent accuracy", key: "intentAccuracy", format: (result) => pct(result.intentAccuracy), delta: (a, b) => signed((b.intentAccuracy - a.intentAccuracy) * 100) },
     { label: "Retrieval intent match", key: "retrievalIntentMatchRate", format: (result) => pct(result.retrievalIntentMatchRate), delta: (a, b) => signed((b.retrievalIntentMatchRate - a.retrievalIntentMatchRate) * 100) },
@@ -67,6 +70,10 @@ export default function EvaluationPage() {
       <Card className="evaluation-table-card"><div className="panel-heading"><div><p className="section-kicker">A/B comparison</p><h2>Direct query vs rewritten query</h2></div><span className="table-note">{direct.cases} cases per configuration</span></div>
         <div className="table-wrap"><table className="evaluation-table"><thead><tr><th>Metric</th><th>Direct</th><th>Rewrite</th><th>Change</th></tr></thead><tbody>{rows.map((row) => <tr key={row.label}><th scope="row">{row.label}</th><td>{row.format(direct)}</td><td>{row.format(rewrite)}</td><td>{row.delta ? row.delta(direct, rewrite) : "—"}</td></tr>)}</tbody></table></div>
       </Card>
+      <Card className="evaluation-cases-card">
+        <div className="panel-heading"><div><p className="section-kicker">Per-case results</p><h2>Held-out test cases</h2></div><div className="evaluation-case-controls" aria-label="Evaluation configuration">{(["direct", "rewrite"] as const).map((mode) => <button key={mode} type="button" aria-pressed={caseMode === mode} onClick={() => { setCaseMode(mode); setOpenCase(null); }}>{mode === "direct" ? "Direct" : "Rewrite"}</button>)}</div></div>
+        {caseResults.length ? <div className="table-wrap"><table className="evaluation-cases-table"><thead><tr><th>#</th><th>Question</th><th>Expected intent</th><th>Predicted intent</th><th>Retrieval</th><th>Outcome</th></tr></thead><tbody>{caseResults.map((item) => <EvaluationCaseRow key={`${caseMode}-${item.index}`} item={item} isOpen={openCase === item.index} onToggle={() => setOpenCase(openCase === item.index ? null : item.index)} />)}</tbody></table></div> : <p className="evaluation-cases-empty">Per-case details are not present in this saved run. Run the evaluation again to record them.</p>}
+      </Card>
       <Card className="evaluation-method"><div className="panel-heading"><div><p className="section-kicker">Method</p><h2>How to read these results</h2></div></div><ul>
         <li><b>Direct</b> retrieves using the original held-out question. <b>Rewrite</b> retrieves using both the original question and the small model’s English rewrite.</li>
         <li>Intent accuracy compares the model’s detected intent with the Bitext label. Retrieval intent match checks whether any retrieved entry has that label.</li>
@@ -78,3 +85,23 @@ export default function EvaluationPage() {
 }
 
 function Metric({ label, value }: { label: string; value: string }) { return <article className="metric-card"><span>{label}</span><strong>{value}</strong></article>; }
+
+function EvaluationCaseRow({ item, isOpen, onToggle }: { item: EvaluationCaseResult; isOpen: boolean; onToggle: () => void }) {
+  return <>
+    <tr>
+      <td>{item.index}</td>
+      <td><button type="button" className="evaluation-case-question" aria-expanded={isOpen} onClick={onToggle}>{item.question}</button></td>
+      <td><code>{item.expectedIntent}</code></td>
+      <td><code>{item.predictedIntent}</code>{!item.intentCorrect ? <span className="case-mismatch">Mismatch</span> : null}</td>
+      <td><span className={`case-result ${item.retrievalIntentMatch ? "matched" : "unmatched"}`}>{item.retrievalIntentMatch ? "Matched" : "No match"}</span></td>
+      <td><span className={`case-result ${item.refused ? "refused" : "answered"}`}>{item.refused ? "Refused" : "Answered"}</span></td>
+    </tr>
+    {isOpen ? <tr className="evaluation-case-detail"><td colSpan={6}>
+      <div className="evaluation-case-detail-grid">
+        <section><h3>Query and intent</h3><p><b>Original:</b> {item.question}</p>{item.queryRewriteUsed ? <p><b>Rewritten query:</b> {item.rewrittenQuery}</p> : null}<p><b>Expected:</b> {item.expectedIntent} · <b>Predicted:</b> {item.predictedIntent}</p><p><b>Retrieval intent match:</b> {item.retrievalIntentMatch ? "Yes" : "No"}</p><p><b>Refusal reason:</b> {item.refusalReason ?? "—"}</p></section>
+        <section><h3>Inference</h3><p><b>Model:</b> {item.model} · {item.provider}</p><p><b>Answer similarity:</b> {item.answerSimilarity === null ? "Unavailable" : item.answerSimilarity.toFixed(3)}</p><p><b>Latency:</b> {item.latencyMs.toLocaleString()} ms · <b>Estimated cost:</b> ${item.costUsd.toFixed(5)}</p><p className="evaluation-case-answer">{item.answer}</p></section>
+        <section className="evaluation-case-sources"><h3>Retrieved evidence · {item.retrievedEntries.length}</h3>{item.evidenceAssessment ? <p><b>Evidence assessment:</b> {item.evidenceAssessment.reason}</p> : null}{item.retrievedEntries.length ? item.retrievedEntries.map((entry, index) => <article key={`${item.index}-${entry.question}`}><div><b>{entry.intent}</b><span>{Math.round(entry.score * 100)}% · {entry.retrievalMethod ?? "unknown"}</span></div><p><b>Q:</b> {entry.question}</p><p><b>A:</b> {entry.answer}</p></article>) : <p>No entries retrieved.</p>}</section>
+      </div>
+    </td></tr> : null}
+  </>;
+}

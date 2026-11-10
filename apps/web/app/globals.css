@@ -176,6 +176,29 @@
   .evaluation-table { @apply min-w-[620px]; }
   .evaluation-table th[scope="row"] { @apply text-left normal-case tracking-normal text-slate-700; }
   .evaluation-table td { @apply tabular-nums; }
+  .evaluation-cases-card { @apply overflow-hidden; }
+  .evaluation-case-controls { @apply flex items-center gap-1 rounded-md border border-line bg-slate-50 p-1; }
+  .evaluation-case-controls button { @apply rounded px-3 py-1.5 text-xs font-medium text-slate-500 transition-colors hover:text-ink; }
+  .evaluation-case-controls button[aria-pressed="true"] { @apply bg-white text-ink shadow-sm; }
+  .evaluation-cases-table { @apply min-w-[900px]; }
+  .evaluation-cases-table td { @apply text-xs; }
+  .evaluation-case-question { @apply max-w-[360px] text-left text-xs font-medium leading-5 text-slate-800 underline decoration-transparent underline-offset-2 hover:text-accent hover:decoration-current; }
+  .evaluation-cases-table code { @apply text-[11px] text-slate-600; }
+  .case-result { @apply inline-flex rounded-full px-2 py-1 text-[10px] font-medium; }
+  .case-result.matched, .case-result.answered { @apply bg-emerald-50 text-emerald-700; }
+  .case-result.unmatched, .case-result.refused { @apply bg-amber-50 text-amber-700; }
+  .case-mismatch { @apply ml-1.5 text-[10px] text-red-600; }
+  .evaluation-case-detail td { @apply bg-slate-50 p-4; }
+  .evaluation-case-detail-grid { @apply grid grid-cols-2 gap-4; }
+  .evaluation-case-detail-grid section { @apply min-w-0 rounded-md border border-line bg-white p-3; }
+  .evaluation-case-detail-grid section h3 { @apply mb-2 text-xs font-semibold text-ink; }
+  .evaluation-case-detail-grid section p { @apply mb-1 text-xs leading-5 text-slate-600; }
+  .evaluation-case-answer { @apply mt-2 whitespace-pre-wrap rounded bg-slate-50 p-2.5 text-slate-800; }
+  .evaluation-case-sources { @apply col-span-2; }
+  .evaluation-case-sources article { @apply border-t border-line py-2; }
+  .evaluation-case-sources article > div { @apply flex justify-between gap-2 text-[11px] text-muted; }
+  .evaluation-case-sources article p { @apply break-words; }
+  .evaluation-cases-empty { @apply m-0 px-5 py-4 text-xs text-muted; }
   .evaluation-method { @apply overflow-hidden; }
   .evaluation-method ul { @apply m-0 space-y-2 px-5 pb-4 text-xs leading-5 text-slate-600; }
   .evaluation-method .metric-footnote { @apply border-t border-line px-5 py-3; }
@@ -298,6 +321,8 @@
   .inspector-title { @apply col-span-2; }
   .metric-grid { @apply grid-cols-2; }
   .usage-charts { @apply grid-cols-1; }
+  .evaluation-case-detail-grid { @apply grid-cols-1; }
+  .evaluation-case-sources { @apply col-span-1; }
 }
 @media (max-width: 520px) {
   .tenant-context { @apply flex-wrap; }

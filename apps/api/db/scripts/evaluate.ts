@@ -3,6 +3,14 @@ import { embed } from "../../src/services/retrieval.js";
 import { answerSupport } from "../../src/services/support.js";
 
 type Case = { instruction: string; response: string; intent: string };
+type CaseResult = {
+  index: number; question: string; expectedIntent: string; predictedIntent: string; intentCorrect: boolean;
+  retrievalIntentMatch: boolean; refused: boolean; refusalReason: string | null; answer: string; model: string;
+  provider: string; rewrittenQuery: string; queryRewriteUsed: boolean; retrievalConfidence: number;
+  evidenceAssessment: Awaited<ReturnType<typeof answerSupport>>["evidenceAssessment"];
+  retrievedEntries: Awaited<ReturnType<typeof answerSupport>>["entries"];
+  answerSimilarity: number | null; latencyMs: number; costUsd: number;
+};
 const rootPrefix = import.meta.url.includes("/dist/") ? "../../../../../" : "../../../../";
 const realEvaluation = new URL(`${rootPrefix}data/eval.json`, import.meta.url);
 const fallbackEvaluation = new URL(`${rootPrefix}data/eval.sample.json`, import.meta.url);
@@ -12,13 +20,36 @@ const cosine = (a: number[], b: number[]) => a.reduce((sum, value, i) => sum + v
 
 async function evaluate(mode: "direct" | "rewrite") {
   const results = [];
+  const caseResults: CaseResult[] = [];
   console.log(JSON.stringify({ type: "progress", mode, completed: 0, total: cases.length }));
   for (const item of cases) {
     const start = performance.now();
     const answer = await answerSupport({ message: item.instruction, conversationId: "00000000-0000-4000-8000-000000000000", configuration: "standard", routingStrategy: "balanced" }, [], undefined, undefined, { rewriteQuery: mode === "rewrite" });
     let quality: number | null = null;
     try { quality = cosine(await embed(answer.output.answer), await embed(item.response)); } catch { /* report quality as unavailable instead of substituting intent accuracy */ }
-    results.push({ intentCorrect: answer.output.intent === item.intent, retrievalIntentMatch: answer.entries.some((entry) => entry.intent === item.intent), refused: answer.refusalReason !== null, quality, latencyMs: Math.round(performance.now() - start), costUsd: answer.costUsd });
+    const caseResult: CaseResult = {
+      index: caseResults.length + 1,
+      question: item.instruction,
+      expectedIntent: item.intent,
+      predictedIntent: answer.output.intent,
+      intentCorrect: answer.output.intent === item.intent,
+      retrievalIntentMatch: answer.entries.some((entry) => entry.intent === item.intent),
+      refused: answer.refusalReason !== null,
+      refusalReason: answer.refusalReason,
+      answer: answer.output.answer,
+      model: answer.model,
+      provider: answer.provider,
+      rewrittenQuery: answer.rewrittenQuery,
+      queryRewriteUsed: answer.queryRewriteUsed,
+      retrievalConfidence: answer.retrievalConfidence,
+      evidenceAssessment: answer.evidenceAssessment,
+      retrievedEntries: answer.entries,
+      answerSimilarity: quality,
+      latencyMs: Math.round(performance.now() - start),
+      costUsd: answer.costUsd
+    };
+    caseResults.push(caseResult);
+    results.push({ intentCorrect: caseResult.intentCorrect, retrievalIntentMatch: caseResult.retrievalIntentMatch, refused: caseResult.refused, quality, latencyMs: caseResult.latencyMs, costUsd: caseResult.costUsd });
     console.log(JSON.stringify({ type: "progress", mode, completed: results.length, total: cases.length }));
   }
   const qualityScores = results.flatMap((result) => result.quality === null ? [] : [result.quality]);
@@ -32,7 +63,8 @@ async function evaluate(mode: "direct" | "rewrite") {
     answerQuality: qualityScores.length === results.length ? qualityScores.reduce((sum, score) => sum + score, 0) / results.length : null,
     answerQualityMethod: "cosine similarity of OpenAI embeddings; null if embeddings are unavailable",
     averageLatencyMs: results.reduce((sum, result) => sum + result.latencyMs, 0) / results.length,
-    totalCostUsd: results.reduce((sum, result) => sum + result.costUsd, 0)
+    totalCostUsd: results.reduce((sum, result) => sum + result.costUsd, 0),
+    caseResults
   };
 }
 
