@@ -6,7 +6,7 @@ import type { FastifyInstance } from "fastify";
 import { authenticate } from "../services/auth.js";
 import { env } from "../config.js";
 
-type EvaluationJob = { id: string; status: "running" | "completed" | "failed"; mode: "direct" | "rewrite"; completedCases: number; totalCases: number; startedAt: string; finishedAt?: string };
+type EvaluationJob = { id: string; status: "running" | "completed" | "failed"; mode: "model_a" | "model_b"; model: string; completedCases: number; totalCases: number; startedAt: string; finishedAt?: string };
 const inDist = import.meta.url.includes("/dist/");
 const resultsFile = new URL(inDist ? "../../../../../evaluation-results.json" : "../../../../evaluation-results.json", import.meta.url);
 const projectRoot = fileURLToPath(new URL(inDist ? "../../../../../" : "../../../../", import.meta.url));
@@ -28,10 +28,10 @@ export async function evaluationRoutes(app: FastifyInstance) {
     const suppliedKey = request.headers["x-api-key"];
     if (!await authenticate(Array.isArray(suppliedKey) ? suppliedKey[0] : suppliedKey)) return reply.code(401).send({ error: "Invalid or missing x-api-key" });
     if (running) return reply.code(409).send({ error: "An evaluation is already running", job: latestJob });
-    if (!env.OPENROUTER_API_KEY) return reply.code(503).send({ error: "Evaluation requires an OpenRouter API key" });
+    if (!env.OPENROUTER_API_KEY || !env.OPENROUTER_MODEL || !env.OPENROUTER_FALLBACK_MODEL) return reply.code(503).send({ error: "Set OPENROUTER_API_KEY, OPENROUTER_MODEL, and OPENROUTER_FALLBACK_MODEL to compare two models" });
 
     running = true;
-    latestJob = { id: randomUUID(), status: "running", mode: "direct", completedCases: 0, totalCases: 30, startedAt: new Date().toISOString() };
+    latestJob = { id: randomUUID(), status: "running", mode: "model_a", model: env.OPENROUTER_MODEL, completedCases: 0, totalCases: 30, startedAt: new Date().toISOString() };
     const job = latestJob;
     const child = spawn(process.execPath, inDist ? [runnerFile] : ["--import", "tsx", runnerFile], { cwd: projectRoot, env: process.env, stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "";
@@ -42,8 +42,8 @@ export async function evaluationRoutes(app: FastifyInstance) {
       stdout = lines.pop() ?? "";
       for (const line of lines) {
         try {
-          const progress = JSON.parse(line) as { type?: string; mode?: EvaluationJob["mode"]; completed?: number; total?: number };
-          if (progress.type === "progress" && latestJob?.id === job.id) latestJob = { ...job, mode: progress.mode ?? job.mode, completedCases: progress.completed ?? job.completedCases, totalCases: progress.total ?? job.totalCases };
+          const progress = JSON.parse(line) as { type?: string; mode?: EvaluationJob["mode"]; model?: string; completed?: number; total?: number };
+          if (progress.type === "progress" && latestJob?.id === job.id) latestJob = { ...job, mode: progress.mode ?? job.mode, model: progress.model ?? job.model, completedCases: progress.completed ?? job.completedCases, totalCases: progress.total ?? job.totalCases };
         } catch { /* Ignore evaluation table output; progress lines are JSON. */ }
       }
     });

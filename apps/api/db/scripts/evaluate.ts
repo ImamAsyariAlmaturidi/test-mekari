@@ -26,7 +26,7 @@ const modelConfigs = [
 ];
 if (modelConfigs.some(({ model }) => !model)) throw new Error("Set OPENROUTER_MODEL and OPENROUTER_FALLBACK_MODEL to compare two OpenRouter models");
 
-async function evaluate(mode: "model_a" | "model_b", backend: Backend, model: string) {
+async function evaluate(mode: "model_a" | "model_b", backend: Exclude<Backend, "mock">, model: string) {
   const results = [];
   const caseResults: CaseResult[] = [];
   console.log(JSON.stringify({ type: "progress", mode, model, completed: 0, total: cases.length }));
@@ -37,7 +37,6 @@ async function evaluate(mode: "model_a" | "model_b", backend: Backend, model: st
     try { quality = cosine(await embed(answer.output.answer), await embed(item.response)); } catch { /* report quality as unavailable instead of substituting intent accuracy */ }
     const caseResult: CaseResult = {
       index: caseResults.length + 1,
-      model,
       question: item.instruction,
       expectedIntent: item.intent,
       predictedIntent: answer.output.intent,
@@ -64,6 +63,7 @@ async function evaluate(mode: "model_a" | "model_b", backend: Backend, model: st
   const qualityScores = results.flatMap((result) => result.quality === null ? [] : [result.quality]);
   return {
     mode,
+    model,
     cases: results.length,
     intents: new Set(cases.map((item) => item.intent)).size,
     intentAccuracy: results.filter((result) => result.intentCorrect).length / results.length,

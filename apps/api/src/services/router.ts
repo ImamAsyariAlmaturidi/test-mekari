@@ -5,7 +5,7 @@ import { env } from "../config.js";
 import { InvalidModelOutputError, type Provider, type ProviderInput, type ProviderResult, type ProviderStream } from "../providers/types.js";
 
 export type RoutingStrategy = "balanced" | "cost_optimized";
-type Backend = "openrouter" | "openrouter_fallback" | "openai" | "mock";
+export type Backend = "openrouter" | "openrouter_fallback" | "openai" | "mock";
 export type RoutingResult = ProviderResult & {
   provider: string; fallbackUsed: boolean; fallbackReason: string | null; primaryModel: string;
   routingStrategy: RoutingStrategy; routingReason: string; selectedBackend: string; finalBackend: string;
@@ -64,10 +64,11 @@ export function selectBackends(strategy: RoutingStrategy, options: SelectionOpti
 
 export async function route(input: ProviderInput, stream?: ProviderStream, strategy: RoutingStrategy = "balanced", testOptions?: {
   selection: ReturnType<typeof selectBackends>;
-  providers: Partial<Record<Backend, () => Provider>>;
+  providers?: Partial<Record<Backend, () => Provider>>;
+  disableFallback?: boolean;
 }): Promise<RoutingResult> {
   const selection = testOptions?.selection ?? selectBackends(strategy);
-  const getProvider = (backend: Backend) => (testOptions?.providers[backend] ?? providers[backend])();
+  const getProvider = (backend: Backend) => (testOptions?.providers?.[backend] ?? providers[backend])();
   const primary = getProvider(selection.primary);
   const fallback = getProvider(selection.fallback);
   const primaryModel = modelFor(selection.primary);
@@ -81,6 +82,7 @@ export async function route(input: ProviderInput, stream?: ProviderStream, strat
       Object.assign(error, { provider: primary.name, primaryProvider: primaryModel, routingStrategy: strategy, routingReason: selection.reason, selectedBackend, finalBackend: primaryModel });
       throw error;
     }
+    if (testOptions?.disableFallback) throw error;
     stream?.onReset();
     const primaryFailure = error instanceof Error ? error.message : "Primary provider failed";
     try {

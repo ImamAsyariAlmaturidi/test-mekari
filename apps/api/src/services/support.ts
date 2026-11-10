@@ -1,5 +1,5 @@
 import { embedMany, retrieve, type RetrievedEntry } from "./retrieval.js";
-import { route, selectBackends, type RoutingResult, type RoutingStrategy } from "./router.js";
+import { route, selectBackends, type Backend, type RoutingResult, type RoutingStrategy } from "./router.js";
 import type { ChatRequest, ModelOutput } from "./chat.js";
 import type { ProviderStream } from "../providers/types.js";
 import { assessEvidence, rewriteQuery } from "./query-understanding.js";
@@ -34,8 +34,10 @@ function baseResult(strategy: RoutingStrategy, selected: ReturnType<typeof selec
     costUsd: usage.costUsd, usageEstimated: usage.estimated, costEstimated: usage.estimated };
 }
 
-export async function answerSupport(request: ChatRequest, history: { role: "user" | "assistant"; content: string }[], stream?: ProviderStream, dependencies: Dependencies = defaults, options: { rewriteQuery?: boolean } = {}): Promise<SupportResult> {
-  const selected = selectBackends(request.routingStrategy);
+export async function answerSupport(request: ChatRequest, history: { role: "user" | "assistant"; content: string }[], stream?: ProviderStream, dependencies: Dependencies = defaults, options: { rewriteQuery?: boolean; routeBackend?: Exclude<Backend, "mock"> } = {}): Promise<SupportResult> {
+  const selected = options.routeBackend
+    ? { primary: options.routeBackend, fallback: options.routeBackend, reason: String(options.routeBackend) + " selected for evaluation" }
+    : selectBackends(request.routingStrategy);
   if (isGreeting.test(request.message)) {
     const result = baseResult(request.routingStrategy, selected, { answer: GREETING_TEMPLATE, intent: "greeting", confidence: 1 }, null, "greeting_handled_without_generation");
     stream?.onDelta(GREETING_TEMPLATE);
@@ -83,7 +85,8 @@ export async function answerSupport(request: ChatRequest, history: { role: "user
   const usableEntries = evidence.sourceIndexes.map((index) => entries[index]);
   let routed: RoutingResult;
   try {
-    routed = await dependencies.route({ message: rewritten, history, entries: usableEntries, concise: request.configuration === "concise" }, stream, request.routingStrategy);
+    routed = await dependencies.route({ message: rewritten, history, entries: usableEntries, concise: request.configuration === "concise" }, stream, request.routingStrategy,
+      options.routeBackend ? { selection: selected, disableFallback: true } : undefined);
   } catch (error) {
     if (error && typeof error === "object") Object.assign(error, { supportMetadata: { entries, retrievalConfidence: entries[0]?.score ?? 0, retrievalMethod: entries[0]?.retrievalMethod ?? "none", rewrittenQuery: rewritten, queryRewriteUsed: options.rewriteQuery === true && rewritten !== request.message, evidenceAssessment: assessment }, queryUsage: usage });
     throw error;

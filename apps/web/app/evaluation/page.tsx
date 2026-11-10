@@ -16,7 +16,7 @@ export default function EvaluationPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [starting, setStarting] = useState(false);
-  const [caseMode, setCaseMode] = useState<"direct" | "rewrite">("direct");
+  const [caseMode, setCaseMode] = useState<"model_a" | "model_b">("model_a");
   const [openCase, setOpenCase] = useState<number | null>(null);
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -41,8 +41,8 @@ export default function EvaluationPage() {
     finally { setStarting(false); }
   }
 
-  const direct = report?.results?.find((item) => item.mode === "direct");
-  const rewrite = report?.results?.find((item) => item.mode === "rewrite");
+  const modelA = report?.results?.find((item) => item.mode === "model_a");
+  const modelB = report?.results?.find((item) => item.mode === "model_b");
   const caseResults = report?.results?.find((item) => item.mode === caseMode)?.caseResults ?? [];
   const rows: { label: string; key: keyof EvaluationResult; format: (result: EvaluationResult) => string; delta?: (a: EvaluationResult, b: EvaluationResult) => string }[] = [
     { label: "Intent accuracy", key: "intentAccuracy", format: (result) => pct(result.intentAccuracy), delta: (a, b) => signed((b.intentAccuracy - a.intentAccuracy) * 100) },
@@ -54,32 +54,32 @@ export default function EvaluationPage() {
   ];
 
   return <div className="page-stack">
-    <section className="page-intro"><div><p className="section-kicker">Quality measurement</p><h1 className="page-title">Evaluation</h1><p>Compare direct Bitext retrieval against query rewriting.</p></div><div className="evaluation-actions"><Button onClick={load} disabled={loading}><Icon name="refresh" />Refresh</Button><Button onClick={runEvaluation} disabled={!apiKey || starting || report?.job?.status === "running"}>{report?.job?.status === "running" ? "Evaluation running…" : starting ? "Starting…" : "Run evaluation"}</Button></div></section>
+    <section className="page-intro"><div><p className="section-kicker">Quality measurement</p><h1 className="page-title">Evaluation</h1><p>Compare <code>OPENROUTER_MODEL</code> and <code>OPENROUTER_FALLBACK_MODEL</code> on identical held-out Bitext cases. Uses provider credits.</p></div><div className="evaluation-actions"><Button onClick={load} disabled={loading}><Icon name="refresh" />Refresh</Button><Button onClick={runEvaluation} disabled={!apiKey || starting || report?.job?.status === "running"}>{report?.job?.status === "running" ? "Evaluation running…" : starting ? "Starting…" : "Run evaluation"}</Button></div></section>
     {error ? <div className="error-banner" role="alert">{error}</div> : null}
     {!apiKey ? <div className="error-banner" role="status">Select a tenant with a valid API key to run an evaluation.</div> : null}
-    {report?.job ? <Card className={`evaluation-job ${report.job.status}`}><div><b>{report.job.status === "running" ? `Running ${report.job.mode} retrieval` : report.job.status === "completed" ? "Evaluation complete" : "Evaluation failed"}</b><span>{report.job.status === "running" ? `${report.job.completedCases} / ${report.job.totalCases} cases in ${report.job.mode} mode · uses provider API credits` : report.job.finishedAt ? new Date(report.job.finishedAt).toLocaleString() : ""}</span></div>{report.job.status === "running" ? <progress max={report.job.totalCases} value={report.job.completedCases} aria-label="Evaluation case progress" /> : null}</Card> : null}
+    {report?.job ? <Card className={`evaluation-job ${report.job.status}`}><div><b>{report.job.status === "running" ? `Evaluating ${report.job.model}` : report.job.status === "completed" ? "Evaluation complete" : "Evaluation failed"}</b><span>{report.job.status === "running" ? `${report.job.completedCases} / ${report.job.totalCases} cases · uses provider API credits` : report.job.finishedAt ? new Date(report.job.finishedAt).toLocaleString() : ""}</span></div>{report.job.status === "running" ? <progress max={report.job.totalCases} value={report.job.completedCases} aria-label="Evaluation case progress" /> : null}</Card> : null}
     {loading && !report ? <Card className="evaluation-empty">Loading evaluation results…</Card> : null}
     {report && !report.available ? <Card className="evaluation-empty"><h2>No evaluation results yet</h2><p>Run the held-out Bitext evaluation to populate this page with measured results.</p><code>npm run evaluate</code></Card> : null}
-    {direct && rewrite ? <>
+    {modelA && modelB ? <>
       <section className="metric-grid evaluation-metrics">
-        <Metric label="Held-out cases" value={String(report?.cases ?? direct.cases)} />
-        <Metric label="Intents covered" value={String(direct.intents)} />
-        <Metric label="Direct retrieval" value={pct(direct.intentAccuracy)} />
-        <Metric label="Rewrite retrieval" value={pct(rewrite.intentAccuracy)} />
+        <Metric label="Held-out cases" value={String(report?.cases ?? modelA.cases)} />
+        <Metric label="Intents covered" value={String(modelA.intents)} />
+        <Metric label={`Model A · ${modelA.model}`} value={pct(modelA.intentAccuracy)} />
+        <Metric label={`Model B · ${modelB.model}`} value={pct(modelB.intentAccuracy)} />
       </section>
-      <Card className="evaluation-table-card"><div className="panel-heading"><div><p className="section-kicker">A/B comparison</p><h2>Direct query vs rewritten query</h2></div><span className="table-note">{direct.cases} cases per configuration</span></div>
-        <div className="table-wrap"><table className="evaluation-table"><thead><tr><th>Metric</th><th>Direct</th><th>Rewrite</th><th>Change</th></tr></thead><tbody>{rows.map((row) => <tr key={row.label}><th scope="row">{row.label}</th><td>{row.format(direct)}</td><td>{row.format(rewrite)}</td><td>{row.delta ? row.delta(direct, rewrite) : "—"}</td></tr>)}</tbody></table></div>
+      <Card className="evaluation-table-card"><div className="panel-heading"><div><p className="section-kicker">Model comparison</p><h2>Model A vs Model B</h2></div><span className="table-note">{modelA.cases} cases per model</span></div>
+        <div className="table-wrap"><table className="evaluation-table"><thead><tr><th>Metric</th><th>{modelA.model}</th><th>{modelB.model}</th><th>Change · B − A</th></tr></thead><tbody>{rows.map((row) => <tr key={row.label}><th scope="row">{row.label}</th><td>{row.format(modelA)}</td><td>{row.format(modelB)}</td><td>{row.delta ? row.delta(modelA, modelB) : "—"}</td></tr>)}</tbody></table></div>
       </Card>
       <Card className="evaluation-cases-card">
-        <div className="panel-heading"><div><p className="section-kicker">Per-case results</p><h2>Held-out test cases</h2></div><div className="evaluation-case-controls" aria-label="Evaluation configuration">{(["direct", "rewrite"] as const).map((mode) => <button key={mode} type="button" aria-pressed={caseMode === mode} onClick={() => { setCaseMode(mode); setOpenCase(null); }}>{mode === "direct" ? "Direct" : "Rewrite"}</button>)}</div></div>
+        <div className="panel-heading"><div><p className="section-kicker">Per-case results</p><h2>Held-out test cases</h2></div><div className="evaluation-case-controls" aria-label="Compared model">{([["model_a", modelA.model], ["model_b", modelB.model]] as const).map(([mode]) => <button key={mode} type="button" aria-pressed={caseMode === mode} onClick={() => { setCaseMode(mode); setOpenCase(null); }}>{mode === "model_a" ? "Model A" : "Model B"}</button>)}</div></div>
         {caseResults.length ? <div className="table-wrap"><table className="evaluation-cases-table"><thead><tr><th>#</th><th>Question</th><th>Expected intent</th><th>Predicted intent</th><th>Retrieval</th><th>Outcome</th></tr></thead><tbody>{caseResults.map((item) => <EvaluationCaseRow key={`${caseMode}-${item.index}`} item={item} isOpen={openCase === item.index} onToggle={() => setOpenCase(openCase === item.index ? null : item.index)} />)}</tbody></table></div> : <p className="evaluation-cases-empty">Per-case details are not present in this saved run. Run the evaluation again to record them.</p>}
       </Card>
       <Card className="evaluation-method"><div className="panel-heading"><div><p className="section-kicker">Method</p><h2>How to read these results</h2></div></div><ul>
-        <li><b>Direct</b> retrieves using the original held-out question. <b>Rewrite</b> retrieves using both the original question and the small model’s English rewrite.</li>
-        <li>Intent accuracy compares the model’s detected intent with the Bitext label. Retrieval intent match checks whether any retrieved entry has that label.</li>
-        <li>Answer quality is embedding cosine similarity against the Bitext reference response; it is an automated proxy, not a human quality score.</li>
-        <li>Latency and estimated cost include rewriting, evidence assessment, and answer generation when used. Refused cases may skip answer generation.</li>
-      </ul><p className="metric-footnote">Source: {report?.source ?? "held-out evaluation dataset"}{report?.generatedAt ? ` · Generated ${new Date(report.generatedAt).toLocaleString()}` : ""}. {rewrite.answerQualityMethod}</p></Card>
+        <li>Both models use the same original held-out question, retrieved evidence, and prompt; only the answer model changes.</li>
+        <li>Intent accuracy compares the detected intent with the Bitext label. Retrieval intent match checks whether any retrieved entry has that label.</li>
+        <li>Answer similarity is embedding cosine against the Bitext reference answer; it is a proxy, not a human quality score.</li>
+        <li>Latency and cost include evidence assessment and answer generation. Refused cases may skip answer generation.</li>
+      </ul><p className="metric-footnote">Source: {report?.source ?? "held-out evaluation dataset"}{report?.generatedAt ? ` · Generated ${new Date(report.generatedAt).toLocaleString()}` : ""}. {modelB.answerQualityMethod}</p></Card>
     </> : null}
   </div>;
 }
